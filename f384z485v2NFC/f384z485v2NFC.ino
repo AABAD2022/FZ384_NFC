@@ -76,9 +76,7 @@ const int TIEMPOENTRELED = 3;
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(COUNT, LED_TROLLEY, NEO_GRB + NEO_KHZ800); //define las propiedades de los leds
 // Variables
 byte COUNT_DPS = 0;
-unsigned long previousMillis = 0;
-const long interval = 5000;
-uint32_t uidToUInt32(uint8_t* uid);
+
 
 // int MODEL = 0; // 0 dosculumnas , 1 solo columna interior , 2 solo columna exterior
 
@@ -94,14 +92,14 @@ const char ETX = 0x03;
 const char CMD_OK = 0x05;
 const char CMD_KO = 0x06;
 int CARRO_NX = 0;
-int TIEMPO_PLUS_CORREA = 2000; // tiempo extra cinta trasportadora
-int period = 1000;
-unsigned long time_now = 0;
-
+unsigned long previousMillis = 0;
+const long interval = 5000; // tiempo extra conveyor
+unsigned long T_previousMillis = 0;
+const long T_interval = 60000; // Esperar un minuto si no se abren los carros para cerrarlos
+unsigned long T_startMillis = millis();
 
 String tagId = "None", dispTag = "None";
 byte nuidPICC[4];
-
 
 
 void setup()
@@ -134,9 +132,8 @@ void setup()
   //Serial.println(Ethernet.localIP());
   //Serial.println(STX);
     Serial3.flush();
- 
   nfc.begin();
-  /*uint32_t versiondata = nfc.getFirmwareVersion();
+  uint32_t versiondata = nfc.getFirmwareVersion();
   if (! versiondata) {
       Serial.print("Didn't Find PN53x Module");
       while (1); // Halt
@@ -146,10 +143,8 @@ void setup()
   Serial.print("Firmware ver. "); Serial.print((versiondata >> 16) & 0xFF, DEC);
   Serial.print('.'); Serial.println((versiondata >> 8) & 0xFF, DEC);
   // Configure board to read RFID tags
-  */
   nfc.SAMConfig();
   Serial.println("Waiting for an ISO14443A Card ...");
-
 }
 void CLEAR_DATA(long TIME__){
    if((long)(LAST_READ+ TIMEOUT) < TIME__ && BUFF_N>0){  
@@ -166,11 +161,14 @@ void loop() {
  if (SEN_VCC == 0){
    SECUENCIA_ON = 1;
    ARRANCA_SELLADORA();
+  
+
  }
    else
    {
     if(SECUENCIA_ON == 1){
         ARRANCA_SELLADORA();
+
        // Serial.println(SECUENCIA_ON);
     }
     }
@@ -178,6 +176,7 @@ void loop() {
  
  if (BUFF_N > BUFF_LEN) {
         Controllino_RS485TxEnable();
+      
 
      if (BUFF_READ[0] == STX) {      
        if (BUFF_READ[5] == ETX && BUFF_READ[6] == Checksums(BUFF_READ, BUFF_LEN + 1, 1)) {
@@ -273,9 +272,10 @@ void loop() {
           byte DATA_OUT[] = { STX,CMD_OK,BUFF_READ[1],SEN_STATE[0],SEN_STATE[1],SEN_STATE[2],SEN_STATE[3],ETX,0 };  
           DATA_OUT[sizeof(DATA_OUT)-1] = Checksums(DATA_OUT, sizeof(DATA_OUT),1);
           
-          if (MODE_R == 1){ Serial3.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
-          if (MODE_R == 1){ SERVER.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
           if (MODE_R == 1){ Serial.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
+          if (MODE_R == 1){ SERVER.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
+          if (MODE_R == 1){ Serial3.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
+
         }
         /*
         if (BUFF_READ[1] == 0x60 ) {  //02 60 00 00 00 03 Chk
@@ -302,15 +302,18 @@ void loop() {
           if (MODE_R == 2){ SERVER.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
         }
         */
-        /*
+        
         if (BUFF_READ[1] == 0x20 ) {  //02 20 00 00 00 03 Chk
           byte DATA_OUT[] = { STX,CMD_OK,BUFF_READ[1],0x00,ETX,0 };    //02 05 20 00 00 03 Chk
           DATA_OUT[sizeof(DATA_OUT)-1] = Checksums(DATA_OUT, sizeof(DATA_OUT),1);
-          TRAY_RESET();
+          //TRAY_RESET();
+          readNFC();
           if (MODE_R == 1){ Serial.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
-          if (MODE_R == 2){ SERVER.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
+          if (MODE_R == 1){ SERVER.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
+          if (MODE_R == 1){ Serial3.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
+
         }
-        */
+        
         /*
         if (BUFF_READ[1] == 0x4F) {  //02 4F 00 00 00 03 Chk
           byte DATA_OUT[] = { STX,CMD_OK,BUFF_READ[1],0x00,ETX,0 };    //02 05 4F 00 00 03 Chk
@@ -338,17 +341,17 @@ void loop() {
         }
 */
         if (BUFF_READ[1] == 0x11 ) {  //02 11 00 00 00 03 Chk
-           readNFC();
-
-          byte DATA_OUT[] = { STX,CMD_OK,BUFF_READ[1],tagId,ETX,0 };    //02 05 11 00 00 03 Chk
-          DATA_OUT[sizeof(DATA_OUT)-1] = Checksums(DATA_OUT, sizeof(DATA_OUT),1);
+          //byte DATA_OUT[] = { STX,CMD_OK,BUFF_READ[1],0x00,ETX,0 };    //02 05 11 00 00 03 Chk
+          //DATA_OUT[sizeof(DATA_OUT)-1] = Checksums(DATA_OUT, sizeof(DATA_OUT),1);
           //MAGNET_ON();
-            readNFC();
+           readNFC();
+          byte DATA_OUT[] = {STX, CMD_OK, BUFF_READ[1], nuidPICC[0], nuidPICC[1], nuidPICC[2], nuidPICC[3], ETX, 0}; // Agrega los bytes del ID Tag en las posiciones adecuadas
 
+          DATA_OUT[sizeof(DATA_OUT)-1] = Checksums(DATA_OUT, sizeof(DATA_OUT),1);
+          if (MODE_R == 1){ Serial.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
+          if (MODE_R == 2){ SERVER.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
           if (MODE_R == 1){ Serial3.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
-          if (MODE_R == 1){ SERVER.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
-          if (MODE_R == 1){ Serial.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));
-          }
+
         }
         
         if (BUFF_READ[1] == 0x12 ) {  //02 12 00 00 00 03 Chk
@@ -358,9 +361,9 @@ void loop() {
           //MAGNET_OFF();
           //LED_CARROS();
           ABRIR_CARROS();
-          if (MODE_R == 1){ Serial3.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
+          if (MODE_R == 1){ Serial.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
           if (MODE_R == 1){ SERVER.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));}
-          if (MODE_R == 1){ Serial.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));
+          if (MODE_R == 1){ Serial3.write((uint8_t*)DATA_OUT, sizeof(DATA_OUT));
           }
         }
         /*
@@ -406,31 +409,35 @@ void loop() {
         CLEAR_DATA(TIME_);   
        }
            Serial3.flush();
+           
 
 
      }
 
   }
   if (Serial3.available()>0){ 
+    MODE_R=1; //SERIE
     BUFF_READ[BUFF_N] = Serial3.read();          
     LAST_READ= TIME_;   
     BUFF_N++;
-    MODE_R=1; //SERIE
+    
   }
  if (CLIENT) {  
     if (CLIENT.available() > 0) {
+      MODE_R=2; //ETH
       BUFF_READ[BUFF_N] = CLIENT.read();  
       LAST_READ= TIME_;   
       BUFF_N++;        
-      MODE_R=2; //ETH
+      
     }
   }
     
   if (Serial.available()>0){ 
+     MODE_R=3; //SERIE
     BUFF_READ[BUFF_N] = Serial.read();          
     LAST_READ= TIME_;   
     BUFF_N++;
-    MODE_R=1; //SERIE
+   
   }
   CLEAR_DATA(TIME_);
   //IS_POWER_OFF();
@@ -440,7 +447,7 @@ void loop() {
   //LOKEY_DISCONECT();
   CARROS_OPEN_SEN();
   Paro_Emg_cartesianos(); //Sub rutina paro emergencia blister
-//readNFC();
+readNFC();
  
   
   
@@ -525,6 +532,8 @@ void DTA_Button()
 }
 
 
+
+
 void CORREA_salida()
 {
 SEN_CONVEYOR = READ_PIN(CONVEYOR_SEN_PIN);
@@ -541,34 +550,12 @@ digitalWrite(CONVEYOR_PIN, 0);
 }
 }
 }
-/*
-void CORREA_salida()
-{ // subrutina correa combeyor
-  SEN_CONVEYOR = READ_PIN(CONVEYOR_SEN_PIN);
-  // SEN_VCC = READ_PIN(VCC_SEN);
-  if (SEN_CONVEYOR == 0)
-  {
-   digitalWrite(CONVEYOR_PIN, 0);
-    // Serial.println("sale a 0");
-  }
-  else
-  {
-    digitalWrite(CONVEYOR_PIN, 1);
-    // Serial.println("sale a 1");
-    //delay(TIEMPO_PLUS_CORREA);
 
 
-    //digitalWrite(CONVEYOR_PIN, 1);
-   
-      
 
- 
-    COUNT_DPS = (byte)(COUNT_DPS + 1);
-    COUNT_DPS = (byte)(COUNT_DPS & 0xff);
-    //delay(50);
-  }
-}
-*/
+
+
+
 void Paro_Emg_cartesianos()//subrutina paro emergencia Cartesianos
 { 
     SEN_SECURE = READ_PIN(SECURE_SEN_PIN);
@@ -600,7 +587,7 @@ void ARRANCA_SELLADORA()
     doShow();
 
     digitalWrite(POWERBTN_SELLADORA_24V, 1);
-    delay(1000);
+    delay(3000);
     /*if (millis() - timing > 1000){ // En lugar de 1000, ajusta el valor de pausa que deses
     timing = millis(); 
     }*/
@@ -622,13 +609,6 @@ void ARRANCA_SELLADORA()
 
 void TRAY_OPEN()
 {
-  
-  int CLOSED = READ_PIN(TRAY_SEN_PIN);
-  digitalWrite(LOCK_TRAY_PIN, 1);
-  while (CLOSED == 1) {
-  CLOSED = READ_PIN(TRAY_SEN_PIN); 
-    }
-  digitalWrite(LOCK_TRAY_PIN, 0);
   /*
 int OPEN = READ_PIN(DTA_SEN_OPEN);
  digitalWrite(DTA_WIRE_RED_GND, 0);
@@ -1257,13 +1237,15 @@ void ABRIR_CARROS()
 
   //int SENSORES_CARROS = ((READ_PIN(SEN_TROLLEY_1)) + (READ_PIN(SEN_TROLLEY_2)) + (READ_PIN(SEN_TROLLEY_3)) + (READ_PIN(SEN_TROLLEY_4)));
   CN = CARRO_NX;
-  
+  T_previousMillis = millis();
  // int SUMAME = (READ_PIN (LOCK_TROLLEY_1_PIN) + READ_PIN (LOCK_TROLLEY_2_PIN));
   //Serial.println(SUMAME);
   //Serial.println("");
   //Serial.println("");
   //Serial.println(SENSORES_CARROS);
 if (SENSORES_CARROS < 4){ 
+  
+
   CN = 0x0F;
   CARRO_NX = 0;
   }
@@ -1300,7 +1282,7 @@ void CARROS_OPEN_SEN(){ // se encarga de desconectar los cierres cuando abrimos 
   }
   if (bitRead(CL,1) == 0 && digitalRead(LOCK_TROLLEY_2_PIN) == 1){
     digitalWrite(LOCK_TROLLEY_2_PIN, 0);
-    CARRO_ABIERTO = 1;    
+    CARRO_ABIERTO = 1;
   }
   if (bitRead(CL,2) == 0 && digitalRead(LOCK_TROLLEY_3_PIN) == 1){
     digitalWrite(LOCK_TROLLEY_3_PIN, 0);
@@ -1309,9 +1291,20 @@ void CARROS_OPEN_SEN(){ // se encarga de desconectar los cierres cuando abrimos 
   if (bitRead(CL,3) == 0 && digitalRead(LOCK_TROLLEY_4_PIN) == 1){
     digitalWrite(LOCK_TROLLEY_4_PIN, 0);
     CARRO_ABIERTO = 1;
-    delay(100);
+    //delay(100);
   //Serial.print(bitRead(CL,0));
   }  
+    if (CARRO_ABIERTO == 0 && SENSORES_CARROS == 4){
+    unsigned long currentMillis = millis();
+  if (currentMillis - (T_previousMillis - T_startMillis) >= T_interval) {
+  // ha pasado el intervalo de tiempo
+  CARRO_NX = 0x0F;
+  ABRIR_CARROS();
+  //T_previousMillis = currentMillis;
+}
+
+  //Serial.print(bitRead(CL,0));
+  }
   else{
     if (CARRO_ABIERTO == 1 && SENSORES_CARROS > 3 ){
           //Serial.print(SENSORES_CARROS);
@@ -1507,37 +1500,48 @@ void doShow() {
 LED_CARROS();
 }
 void readNFC() {
-  
-  boolean success;
+  boolean success = false;
   uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
-  uint8_t uidLength;                                            // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
+  uint8_t uidLength = 0;  // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
+  
+  // Try to read a card
   success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, &uid[0], &uidLength);
+  
   if (success) {
-      //Serial.print("UID Length: "); Serial.print(uidLength, DEC); Serial.println(" bytes");
-      //Serial.print("UID Value: ");
-      for (uint8_t i = 0; i < uidLength; i++) {
-          nuidPICC[i] = uid[i];
-      //    Serial.print(" "); 
-      //    Serial.print(uid[i], HEX);
-      }
-      Serial.println();
-      tagId = tagToString(nuidPICC);
-      dispTag = tagId;
-      //Serial.print(F("tagId is : "));
-      Serial.println(tagId);
-      Serial.println("");
-      //delay(500);  // 1 second halt
+    // Store the ID of the detected card in nuidPICC
+    for (uint8_t i = 0; i < uidLength; i++) {
+      nuidPICC[i] = uid[i];
+    }
+    
+    // Convert the ID to a string
+    tagId = tagToString(nuidPICC);
+    
+    // Print the tag ID to the serial monitor
+    //Serial.print(F("Tag ID: "));
+    //Serial.println(tagId);
+    
+    // Wait a short period of time to avoid reading the same tag repeatedly
+    delay(50);
   } else {
-      // PN532 probably timed out waiting for a card
-      //Serial.println("Timed out! Waiting for a card...");
+    // If a card was not detected, set nuidPICC to 0
+    for (uint8_t i = 0; i < sizeof(nuidPICC); i++) {
+      nuidPICC[i] = 0;
+    }
   }
 }
+
 String tagToString(byte id[4]) {
   String tagId = "";
+  
+  // Convert each byte of the ID to a string and concatenate them with periods between
   for (byte i = 0; i < 4; i++) {
-      if (i < 3) tagId += String(id[i]) + ".";
-      else tagId += String(id[i]);
+    if (i < 3) {
+      tagId += String(id[i]) + ".";
+    } else {
+      tagId += String(id[i]);
+    }
   }
+  
   return tagId;
 }
 
