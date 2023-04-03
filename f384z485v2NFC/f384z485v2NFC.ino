@@ -78,6 +78,7 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(COUNT, LED_TROLLEY, NEO_GRB + NEO_KH
 byte COUNT_DPS = 0;
 unsigned long previousMillis = 0;
 const long interval = 5000;
+uint32_t uidToUInt32(uint8_t* uid);
 
 // int MODEL = 0; // 0 dosculumnas , 1 solo columna interior , 2 solo columna exterior
 
@@ -337,7 +338,9 @@ void loop() {
         }
 */
         if (BUFF_READ[1] == 0x11 ) {  //02 11 00 00 00 03 Chk
-          byte DATA_OUT[] = { STX,CMD_OK,BUFF_READ[1],0x00,ETX,0 };    //02 05 11 00 00 03 Chk
+           readNFC();
+
+          byte DATA_OUT[] = { STX,CMD_OK,BUFF_READ[1],tagId,ETX,0 };    //02 05 11 00 00 03 Chk
           DATA_OUT[sizeof(DATA_OUT)-1] = Checksums(DATA_OUT, sizeof(DATA_OUT),1);
           //MAGNET_ON();
             readNFC();
@@ -1504,17 +1507,18 @@ void doShow() {
 LED_CARROS();
 }
 void readNFC() {
+  
   boolean success;
   uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
   uint8_t uidLength;                                            // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
   success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, &uid[0], &uidLength);
   if (success) {
       //Serial.print("UID Length: "); Serial.print(uidLength, DEC); Serial.println(" bytes");
-      Serial.print("UID Value: ");
+      //Serial.print("UID Value: ");
       for (uint8_t i = 0; i < uidLength; i++) {
           nuidPICC[i] = uid[i];
-          Serial.print(" "); 
-          Serial.print(uid[i], HEX);
+      //    Serial.print(" "); 
+      //    Serial.print(uid[i], HEX);
       }
       Serial.println();
       tagId = tagToString(nuidPICC);
